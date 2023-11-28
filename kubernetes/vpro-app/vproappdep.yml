@@ -1,29 +1,51 @@
-apiVersion: apps/v1
+apiversion: apps/v1
 kind: Deployment
 metadata:
-  name: vproapp
-  labels: 
-    app: vproapp
+    name: vprodb
+    labels:
+        app: vprodb
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: vproapp
-  template:
-    metadata:
-      labels:
-        app: vproapp
-    spec:
-      containers:
-      - name: vproapp
-        image: vprofile/vprofileapp
-        ports:
-        - name: vproapp-port
-          containerPort: 8080
-      initContainers:
-      - name: init-mydb
-        image: busybox
-        command: ['sh', '-c', 'until nslookup vprodb.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mydb; sleep 2; done;']
-      - name: init-memcache
-        image: busybox
-        command: ['sh', '-c', 'until nslookup vprocache01.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mydb; sleep 2; done;']
+    selector:
+        matchLabels:
+            app: vprodb
+    replicas: 1
+    template:
+        metadata:
+            labels:
+                app: vprodb
+        spec:
+            containers:
+                - name: vprodb
+                  image: shreejejurkar/vprofiledb
+#           first
+#                 args:
+#                   - "--ignore-db-dir=lost+found"
+# Map the EBS to the pod
+                  volumeMounts:
+                    - mountPath: /var/lib/mysql
+                      name: vpro-db-data
+                  ports:
+                    - name: vprodb-port
+                      containerPort: 3306
+                  env:
+                    - name: MYSQL_ROOT_PASSWORD
+                      valueFrom:
+                        secretKeyRef:
+                            name: app-secret
+                            key: db-pass
+            nodeSelector:
+                zone: us-east-2a
+            volumes:
+                - name: vpro-db-data
+                  awsElasticBlockStore:
+                    volumeID: "vol-0bd5bddf0fd4445df"
+                    fsType: ext4
+#           second
+            initContainers:
+                - name: busybox
+                  image: busybox:latest
+                  args: ["rm", "-rf", "/vsr/lib/mysql/lost+found"]
+                  volumeMounts:
+                    - name: vpro-db-data
+                      mountPath: /var/lib/mysql
+
